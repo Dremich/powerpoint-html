@@ -4,61 +4,147 @@
   <meta charset="utf-8">
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <style>
-    body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; background: #1e1e1e; color: #eee; }
-    #setup { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 10px; }
-    input { padding: 8px 12px; width: 260px; border-radius: 4px; border: 1px solid #555; background: #2d2d2d; color: #fff; }
-    button { padding: 8px 16px; border-radius: 4px; border: none; background: #0078d4; color: white; cursor: pointer; }
+    body, html {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      overflow: hidden; font-family: system-ui, sans-serif;
+      background: #1e1e1e; color: #eee;
+      overscroll-behavior: contain;
+    }
+    #setup {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; height: 100%; gap: 16px; padding: 20px;
+      box-sizing: border-box; text-align: center;
+    }
+    .card {
+      background: #2a2a2a; border: 1px solid #444; border-radius: 8px;
+      padding: 20px; width: 100%; max-width: 440px;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .btn-primary {
+      display: inline-block; padding: 10px 18px; border-radius: 6px;
+      background: #0078d4; color: white; font-weight: 600;
+      cursor: pointer; border: none; font-size: 14px;
+    }
+    .btn-primary:hover { background: #106ebe; }
+    .row { display: flex; gap: 8px; width: 100%; }
+    input[type="text"] {
+      flex: 1; padding: 8px 12px; border-radius: 4px;
+      border: 1px solid #555; background: #1e1e1e; color: #fff;
+    }
+    button.secondary {
+      padding: 8px 14px; border-radius: 4px; border: 1px solid #555;
+      background: #3a3a3a; color: white; cursor: pointer;
+    }
+    #resetBtn {
+      position: fixed; top: 6px; right: 6px; z-index: 9999;
+      background: rgba(0,0,0,0.55); color: #fff; border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 4px; padding: 3px 8px; font-size: 11px;
+      cursor: pointer; opacity: 0; transition: opacity 0.2s;
+    }
+    body:hover #resetBtn { opacity: 1; }
     iframe { width: 100%; height: 100%; border: none; display: none; background: white; }
   </style>
 </head>
 <body>
+  <button id="resetBtn" onclick="resetViewer()" style="display:none;" title="Change embedded file">✕ Change HTML</button>
+
   <div id="setup">
-    <div>Enter local filename (e.g. <code>phonon_focusing.html</code>) or drop HTML file here:</div>
-    <div>
-      <input id="urlInput" type="text" placeholder="my_visual.html" />
-      <button onclick="loadUrl(document.getElementById('urlInput').value)">Embed</button>
+    <div class="card">
+      <div style="font-weight:600; font-size:15px;">Option 1: Load Local .HTML File</div>
+      <div style="font-size:12px; color:#aaa;">Reads the file directly from your PC and saves it inside this PowerPoint slide</div>
+      <label class="btn-primary">
+        Choose Local HTML File...
+        <input id="filePicker" type="file" accept=".html,.htm" style="display:none;" />
+      </label>
+    </div>
+
+    <div class="card">
+      <div style="font-weight:600; font-size:15px;">Option 2: Load Hosted HTTPS URL</div>
+      <div class="row">
+        <input id="urlInput" type="text" placeholder="https://..." />
+        <button class="secondary" onclick="loadUrl(document.getElementById('urlInput').value)">Embed URL</button>
+      </div>
     </div>
   </div>
-  <iframe id="frame"></iframe>
+
+  <iframe id="frame" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"></iframe>
 
   <script>
     const frame = document.getElementById('frame');
     const setup = document.getElementById('setup');
+    const resetBtn = document.getElementById('resetBtn');
+    const filePicker = document.getElementById('filePicker');
+
+    // Inject scroll & focus lock into the child HTML so wheel events stay in the visual
+    const scrollLockPatch = `
+      <script>
+        window.addEventListener('mouseenter', () => { window.focus(); });
+        window.addEventListener('wheel', (e) => {
+          e.stopPropagation();
+        }, { passive: false });
+      <\/script>
+    `;
 
     function showContent(src, isRawHtml = false) {
       setup.style.display = 'none';
       frame.style.display = 'block';
-      if (isRawHtml) frame.srcdoc = src;
-      else frame.src = src;
+      resetBtn.style.display = 'block';
+      if (isRawHtml) {
+        frame.removeAttribute('src');
+        frame.srcdoc = src + scrollLockPatch;
+      } else {
+        frame.removeAttribute('srcdoc');
+        frame.src = src;
+      }
     }
+
+    function saveSettings(key, val) {
+      if (window.Office && Office.context && Office.context.document) {
+        Office.context.document.settings.remove('savedHtml');
+        Office.context.document.settings.remove('savedSrc');
+        Office.context.document.settings.set(key, val);
+        Office.context.document.settings.saveAsync();
+      }
+    }
+
+    function resetViewer() {
+      if (window.Office && Office.context && Office.context.document) {
+        Office.context.document.settings.remove('savedHtml');
+        Office.context.document.settings.remove('savedSrc');
+        Office.context.document.settings.saveAsync();
+      }
+      frame.style.display = 'none';
+      resetBtn.style.display = 'none';
+      setup.style.display = 'flex';
+    }
+
+    filePicker.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const html = ev.target.result;
+        saveSettings('savedHtml', html);
+        showContent(html, true);
+      };
+      reader.readAsText(file);
+    });
 
     function loadUrl(val) {
       if (!val) return;
-      if (Office.context && Office.context.document) {
-        Office.context.document.settings.set('savedSrc', val);
-        Office.context.document.settings.saveAsync();
-      }
+      saveSettings('savedSrc', val);
       showContent(val, false);
     }
 
-    // Also allow dragging and dropping any self-contained .html file from Explorer!
-    window.addEventListener('dragover', e => e.preventDefault());
-    window.addEventListener('drop', e => {
-      e.preventDefault();
-      const file = e.dataTransfer.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = ev => {
-          const html = ev.target.result;
-          if (Office.context && Office.context.document) {
-            Office.context.document.settings.set('savedHtml', html);
-            Office.context.document.settings.saveAsync();
-          }
-          showContent(html, true);
-        };
-        reader.readAsText(file);
-      }
+    // Grab focus when hovering over the add-in so PowerPoint routes scroll wheel to WebView2
+    window.addEventListener('mouseenter', () => {
+      window.focus();
+      if (frame.contentWindow) frame.contentWindow.focus();
     });
+
+    window.addEventListener('wheel', (e) => {
+      e.stopPropagation();
+    }, { passive: false });
 
     Office.onReady(() => {
       if (Office.context && Office.context.document) {
