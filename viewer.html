@@ -1,159 +1,101 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
-  <style>
-    body, html {
-      margin: 0; padding: 0; width: 100%; height: 100%;
-      overflow: hidden; font-family: system-ui, sans-serif;
-      background: #1e1e1e; color: #eee;
-      overscroll-behavior: contain;
-    }
-    #setup {
-      display: flex; flex-direction: column; align-items: center;
-      justify-content: center; height: 100%; gap: 16px; padding: 20px;
-      box-sizing: border-box; text-align: center;
-    }
-    .card {
-      background: #2a2a2a; border: 1px solid #444; border-radius: 8px;
-      padding: 20px; width: 100%; max-width: 440px;
-      display: flex; flex-direction: column; gap: 12px;
-    }
-    .btn-primary {
-      display: inline-block; padding: 10px 18px; border-radius: 6px;
-      background: #0078d4; color: white; font-weight: 600;
-      cursor: pointer; border: none; font-size: 14px;
-    }
-    .btn-primary:hover { background: #106ebe; }
-    .row { display: flex; gap: 8px; width: 100%; }
-    input[type="text"] {
-      flex: 1; padding: 8px 12px; border-radius: 4px;
-      border: 1px solid #555; background: #1e1e1e; color: #fff;
-    }
-    button.secondary {
-      padding: 8px 14px; border-radius: 4px; border: 1px solid #555;
-      background: #3a3a3a; color: white; cursor: pointer;
-    }
-    #resetBtn {
-      position: fixed; top: 6px; right: 6px; z-index: 9999;
-      background: rgba(0,0,0,0.55); color: #fff; border: 1px solid rgba(255,255,255,0.2);
-      border-radius: 4px; padding: 3px 8px; font-size: 11px;
-      cursor: pointer; opacity: 0; transition: opacity 0.2s;
-    }
-    body:hover #resetBtn { opacity: 1; }
-    iframe { width: 100%; height: 100%; border: none; display: none; background: white; }
-  </style>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PowerPoint HTML viewer</title>
+<script async src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:none;background:white;color:#25313a;font:14px system-ui,sans-serif}*{box-sizing:border-box}#setup{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:22px;overflow:auto;background:#f8fafb}#setup[hidden],#diagnostics[hidden]{display:none}.group{width:100%;max-width:520px}h1{font-size:21px;font-weight:500;margin:0 0 15px}label{display:block;margin:8px 0}input,select,button{font:inherit;padding:8px;border:1px solid #cbd5dc;border-radius:4px;background:white;color:inherit}input[type=url]{width:100%}input[type=number]{width:88px}button{cursor:pointer}button:hover{background:#edf4f8}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.hint{color:#667885;font-size:12px;line-height:1.5}#viewport{position:absolute;inset:0;overflow:hidden}#frame{position:absolute;display:none;border:0;background:white;transform-origin:0 0;overflow:hidden}#status{min-height:18px;color:#a43c32;font-size:12px}#diagnostics{position:fixed;left:8px;bottom:8px;z-index:10000;background:#fffef5;border:1px solid #dbd9c6;padding:14px;max-width:460px;box-shadow:0 3px 14px #0002;font-size:12px}#readout{white-space:pre-wrap;line-height:1.5;margin:8px 0}#diagnostics button{padding:5px 8px;font-size:12px}
+</style>
 </head>
 <body>
-  <button id="resetBtn" onclick="resetViewer()" style="display:none;" title="Change embedded file">✕ Change HTML</button>
-
-  <div id="setup">
-    <div class="card">
-      <div style="font-weight:600; font-size:15px;">Option 1: Load Local .HTML File</div>
-      <div style="font-size:12px; color:#aaa;">Reads the file directly from your PC and saves it inside this PowerPoint slide</div>
-      <label class="btn-primary">
-        Choose Local HTML File...
-        <input id="filePicker" type="file" accept=".html,.htm" style="display:none;" />
-      </label>
-    </div>
-
-    <div class="card">
-      <div style="font-weight:600; font-size:15px;">Option 2: Load Hosted HTTPS URL</div>
-      <div class="row">
-        <input id="urlInput" type="text" placeholder="https://..." />
-        <button class="secondary" onclick="loadUrl(document.getElementById('urlInput').value)">Embed URL</button>
-      </div>
-    </div>
-  </div>
-
-  <iframe id="frame" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"></iframe>
-
-  <script>
-    const frame = document.getElementById('frame');
-    const setup = document.getElementById('setup');
-    const resetBtn = document.getElementById('resetBtn');
-    const filePicker = document.getElementById('filePicker');
-
-    // Inject scroll & focus lock into the child HTML so wheel events stay in the visual
-    const scrollLockPatch = `
-      <script>
-        window.addEventListener('mouseenter', () => { window.focus(); });
-        window.addEventListener('wheel', (e) => {
-          e.stopPropagation();
-        }, { passive: false });
-      <\/script>
-    `;
-
-    function showContent(src, isRawHtml = false) {
-      setup.style.display = 'none';
-      frame.style.display = 'block';
-      resetBtn.style.display = 'block';
-      if (isRawHtml) {
-        frame.removeAttribute('src');
-        frame.srcdoc = src + scrollLockPatch;
-      } else {
-        frame.removeAttribute('srcdoc');
-        frame.src = src;
-      }
-    }
-
-    function saveSettings(key, val) {
-      if (window.Office && Office.context && Office.context.document) {
-        Office.context.document.settings.remove('savedHtml');
-        Office.context.document.settings.remove('savedSrc');
-        Office.context.document.settings.set(key, val);
-        Office.context.document.settings.saveAsync();
-      }
-    }
-
-    function resetViewer() {
-      if (window.Office && Office.context && Office.context.document) {
-        Office.context.document.settings.remove('savedHtml');
-        Office.context.document.settings.remove('savedSrc');
-        Office.context.document.settings.saveAsync();
-      }
-      frame.style.display = 'none';
-      resetBtn.style.display = 'none';
-      setup.style.display = 'flex';
-    }
-
-    filePicker.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const html = ev.target.result;
-        saveSettings('savedHtml', html);
-        showContent(html, true);
-      };
-      reader.readAsText(file);
-    });
-
-    function loadUrl(val) {
-      if (!val) return;
-      saveSettings('savedSrc', val);
-      showContent(val, false);
-    }
-
-    // Grab focus when hovering over the add-in so PowerPoint routes scroll wheel to WebView2
-    window.addEventListener('mouseenter', () => {
-      window.focus();
-      if (frame.contentWindow) frame.contentWindow.focus();
-    });
-
-    window.addEventListener('wheel', (e) => {
-      e.stopPropagation();
-    }, { passive: false });
-
-    Office.onReady(() => {
-      if (Office.context && Office.context.document) {
-        const savedHtml = Office.context.document.settings.get('savedHtml');
-        const savedSrc = Office.context.document.settings.get('savedSrc');
-        if (savedHtml) showContent(savedHtml, true);
-        else if (savedSrc) showContent(savedSrc, false);
-      }
-    });
-  </script>
-</body>
-</html>
+<div id="viewport"><iframe id="frame" title="Interactive visual" tabindex="0" scrolling="no" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals" allow="fullscreen"></iframe></div>
+<section id="setup"><div class="group"><h1>Embed an interactive visual</h1><label>Local HTML <input id="filePicker" type="file" accept=".html,.htm"></label><p class="hint">The HTML is stored with this add-in using the same settings keys as the original viewer. Use a self-contained file; relative asset paths do not accompany an upload.</p><label>Or an HTTPS address <input id="urlInput" type="url" placeholder="https://…"></label><div class="row"><button id="loadUrl">Embed URL</button><button id="resume" hidden>Return to current visual</button></div><label>Layout <select id="layout"><option value="responsive">Responsive — visual fills the object</option><option value="fit">Fit a fixed-size page inside the object</option></select></label><div class="row"><label>Page width <input id="designWidth" type="number" value="1280" min="100" max="8000"></label><label>Height <input id="designHeight" type="number" value="720" min="100" max="8000"></label></div><p class="hint">No controls overlay your visual. To reopen setup: Ctrl+Alt+O. Diagnostics: Ctrl+Alt+D. Click the visual first if PowerPoint has focus. The hosted-page shortcuts require the optional bridge.</p><div id="status" role="status"></div></div></section>
+<section id="diagnostics" hidden><strong>Frame timing</strong><div id="readout">Not measured.</div><div class="row"><button id="measure">Measure 2.5 seconds</button><button id="configure">Setup</button><button id="closeDiagnostics">Close</button></div><p class="hint">These are requestAnimationFrame callback rates, not measured screen-presentation FPS.</p></section>
+<script>
+// The build step fills BRIDGE_SOURCE from visual-bridge.js. No fetch is needed at runtime.
+const BRIDGE_SOURCE="/* Optional bridge for a hosted, cross-origin visual. Uploaded HTML gets this automatically. */\n(function installVisualBridge(){\n  if(window.__pptVisualBridge)return;\n  window.__pptVisualBridge=true;\n  let parentOrigin=null;\n  const emit=(type,data={})=>{\n    if(window.parent===window)return;\n    window.parent.postMessage({channel:'ppt-html-v2',type,...data},parentOrigin||'*');\n  };\n  function focusVisual(){try{window.focus();}catch{}}\n  document.addEventListener('pointerenter',focusVisual,true);\n  document.addEventListener('pointerdown',focusVisual,true);\n  document.addEventListener('wheel',e=>{\n    // Let the visual's handlers run; suppress browser scrolling/scroll chaining.\n    if(!e.ctrlKey)e.preventDefault();\n    e.stopPropagation();\n  },{passive:false});\n  window.addEventListener('keydown',e=>{\n    if(e.ctrlKey&&e.altKey&&['o','d'].includes(e.key.toLowerCase())){\n      e.preventDefault();e.stopImmediatePropagation();\n      emit(e.key.toLowerCase()==='o'?'configure':'diagnostics');return;\n    }\n    // Bubble phase: visual handlers get the event first.\n    e.stopPropagation();\n    const typing=e.target.closest?.('input,textarea,select,[contenteditable=\"true\"]');\n    if(!typing&&[' ','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','PageUp','PageDown','Home','End'].includes(e.key))e.preventDefault();\n  });\n  const style=document.createElement('style');\n  style.textContent='html,body{overflow:hidden!important;overscroll-behavior:none!important;scrollbar-width:none!important}*::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}';\n  (document.head||document.documentElement).append(style);\n  function runCommand(command,value){\n    const api=window.EmbeddedVisual;\n    if(!api||typeof api[command]!=='function')return {ok:false,error:'This page does not expose EmbeddedVisual.'};\n    if(!['play','pause','reset','nextStep','setProgress','setScene','getState'].includes(command))return {ok:false,error:'Unsupported command.'};\n    return {ok:true,value:api[command](value)};\n  }\n  window.addEventListener('message',e=>{\n    if(e.source!==window.parent||e.data?.channel!=='ppt-html-v2')return;\n    if(parentOrigin&&parentOrigin!=='*'&&e.origin!==parentOrigin)return;\n    if(e.data.type==='hello'){\n      parentOrigin=e.origin==='null'?'*':e.origin;\n      emit('ready',{visibility:document.visibilityState,hasPlaybackAPI:!!window.EmbeddedVisual});\n    }else if(e.data.type==='focus'){focusVisual();}\n    else if(e.data.type==='host-view'){\n      window.dispatchEvent(new CustomEvent('ppt-host-view',{detail:{view:e.data.view}}));\n    }else if(e.data.type==='command'){\n      try{emit('command-result',{id:e.data.id,...runCommand(e.data.command,e.data.value)});}\n      catch(error){emit('command-result',{id:e.data.id,ok:false,error:String(error.message||error)});}\n    }else if(e.data.type==='measure'){\n      const intervals=[];let last=null,start=null;\n      function sample(now){\n        start??=now;if(last!==null)intervals.push(now-last);last=now;\n        if(now-start<2500){requestAnimationFrame(sample);return;}\n        const total=intervals.reduce((a,b)=>a+b,0),sorted=intervals.slice().sort((a,b)=>a-b);\n        emit('timing',{fps:total?1000*intervals.length/total:0,p95:sorted[Math.floor(sorted.length*.95)]||0,visibility:document.visibilityState,dpr:devicePixelRatio});\n      }\n      requestAnimationFrame(sample);\n    }\n  });\n  document.addEventListener('visibilitychange',()=>emit('visibility',{visibility:document.visibilityState}));\n})();\n";
+const $=id=>document.getElementById(id),frame=$('frame');
+let officeDocument=null,current=null,view='unknown',childReady=false,childTiming=null,viewerTiming=null,settingsStatus='Not connected to Office.',generation=0;
+let options={layout:'responsive',width:1280,height:720};
+function targetOrigin(){return current?.type==='url'?new URL(current.value).origin:location.origin==='null'?'*':location.origin;}
+function send(type,data={}){frame.contentWindow?.postMessage({channel:'ppt-html-v2',type,...data},targetOrigin());}
+function fit(){
+ const w=innerWidth,h=innerHeight;
+ if(options.layout==='fit'){
+  const scale=Math.min(w/options.width,h/options.height);
+  Object.assign(frame.style,{width:options.width+'px',height:options.height+'px',left:(w-options.width*scale)/2+'px',top:(h-options.height*scale)/2+'px',transform:`scale(${scale})`});
+ }else Object.assign(frame.style,{width:w+'px',height:h+'px',left:'0px',top:'0px',transform:'none'});
+}
+function readOptions(){options={layout:$('layout').value,width:Math.min(8000,Math.max(100,Number($('designWidth').value)||1280)),height:Math.min(8000,Math.max(100,Number($('designHeight').value)||720))};}
+function writeOptions(){ $('layout').value=options.layout;$('designWidth').value=options.width;$('designHeight').value=options.height; }
+function patchHtml(html){
+ const doc=new DOMParser().parseFromString(html,'text/html');
+ const bridge=doc.createElement('script');bridge.textContent=BRIDGE_SOURCE;doc.body.append(bridge);
+ return '<!doctype html>\n'+doc.documentElement.outerHTML;
+}
+function focusVisual(){if(!current||!$('setup').hidden)return;try{frame.focus({preventScroll:true});frame.contentWindow.focus();}catch{}send('focus');}
+function showContent(type,value){
+ current={type,value};childReady=false;childTiming=null;generation++;
+ $('setup').hidden=true;frame.style.display='block';
+ if(type==='html'){frame.removeAttribute('src');frame.srcdoc=patchHtml(value);}
+ else{frame.removeAttribute('srcdoc');frame.src=value;}
+ fit();updateReadout();
+}
+function persist(){
+ if(!officeDocument){settingsStatus='Browser preview: not saved to a PowerPoint slide.';updateReadout();return;}
+ const settings=officeDocument.settings;
+ settings.remove('savedHtml');settings.remove('savedSrc');
+ settings.set(current.type==='html'?'savedHtml':'savedSrc',current.value);
+ settings.set('viewerOptionsV2',options);
+ settings.saveAsync(result=>{settingsStatus=result.status==='succeeded'?'Saved to slide settings.':'Save failed: '+(result.error?.message||result.status);$('status').textContent=result.status==='succeeded'?'':settingsStatus;updateReadout();});
+}
+function configure(){ $('diagnostics').hidden=true;$('setup').hidden=false;$('resume').hidden=!current;writeOptions();$('filePicker').value=''; }
+function updateReadout(extra=''){
+ $('readout').textContent=`Office view: ${view}\nBridge: ${childReady?'connected':'not connected'}\n${settingsStatus}\n`+(childTiming?`Child rAF: ${childTiming.fps.toFixed(1)} callbacks/s; p95 interval ${childTiming.p95.toFixed(1)} ms\nChild visibility: ${childTiming.visibility}; DPR: ${childTiming.dpr}\n`:'')+(viewerTiming!==null?`Viewer rAF: ${viewerTiming.toFixed(1)} callbacks/s\n`:'')+extra;
+}
+frame.addEventListener('load',()=>{const token=generation;send('hello');send('host-view',{view});setTimeout(()=>{if(token===generation&&!childReady)send('hello');},500);});
+frame.addEventListener('pointerenter',focusVisual);frame.addEventListener('pointerdown',focusVisual);
+window.addEventListener('keydown',e=>{
+ if(e.ctrlKey&&e.altKey&&e.key.toLowerCase()==='o'){e.preventDefault();configure();}
+ if(e.ctrlKey&&e.altKey&&e.key.toLowerCase()==='d'){e.preventDefault();$('diagnostics').hidden=!$('diagnostics').hidden;updateReadout();}
+});
+window.addEventListener('message',e=>{
+ if(e.source!==frame.contentWindow||e.data?.channel!=='ppt-html-v2')return;
+ const expected=targetOrigin();if(expected!=='*'&&e.origin!==expected)return;
+ if(e.data.type==='ready'){childReady=true;send('host-view',{view});updateReadout();}
+ if(e.data.type==='timing'){childTiming=e.data;updateReadout();}
+ if(e.data.type==='visibility')updateReadout('Child visibility changed: '+e.data.visibility);
+ if(e.data.type==='configure')configure();
+ if(e.data.type==='diagnostics'){$('diagnostics').hidden=!$('diagnostics').hidden;updateReadout();}
+});
+$('filePicker').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;readOptions();showContent('html',await file.text());persist();});
+$('loadUrl').onclick=()=>{let url;try{url=new URL($('urlInput').value);if(url.protocol!=='https:')throw Error();}catch{$('status').textContent='Enter a valid HTTPS URL.';return;}readOptions();showContent('url',url.href);persist();};
+$('resume').onclick=()=>{readOptions();$('setup').hidden=true;fit();persist();};
+$('configure').onclick=configure;$('closeDiagnostics').onclick=()=>$('diagnostics').hidden=true;
+$('measure').onclick=()=>{
+ updateReadout('Measuring…');send('measure');
+ const values=[];let first=null,last=null;
+ function sample(now){first??=now;if(last!==null)values.push(now-last);last=now;if(now-first<2500){requestAnimationFrame(sample);return;}const sum=values.reduce((a,b)=>a+b,0);viewerTiming=1000*values.length/sum;updateReadout();}
+ requestAnimationFrame(sample);
+};
+function activeView(value){view=value;send('host-view',{view});updateReadout();}
+function connectOffice(){
+ if(!window.Office?.onReady){setTimeout(connectOffice,150);return;}
+ Office.onReady(()=>{
+  officeDocument=Office.context?.document;if(!officeDocument)return;
+  settingsStatus='Connected to Office.';
+  const saved=officeDocument.settings.get('viewerOptionsV2');if(saved){options={...options,...saved};writeOptions();}
+  const html=officeDocument.settings.get('savedHtml'),url=officeDocument.settings.get('savedSrc');
+  if(!current&&!new URLSearchParams(location.search).has('configure')){if(html)showContent('html',html);else if(url)showContent('url',url);}
+  officeDocument.getActiveViewAsync?.(r=>{if(r.status==='succeeded')activeView(r.value);});
+  if(Office.EventType?.ActiveViewChanged)officeDocument.addHandlerAsync?.(Office.EventType.ActiveViewChanged,e=>activeView(e.activeView));
+  updateReadout();
+ });
+}
+window.addEventListener('resize',fit);
+window.HTMLViewer={sendCommand:(command,value)=>send('command',{command,value,id:Date.now()}),configure,getState:()=>({view,childReady,options,childTiming,settingsStatus})};
+if(new URLSearchParams(location.search).has('diagnostics'))$('diagnostics').hidden=false;
+connectOffice();
+</script>
+</body></html>
